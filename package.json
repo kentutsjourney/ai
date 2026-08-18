@@ -5,7 +5,6 @@
   "main": "api/webhook.ts",
   "type": "module",
   "scripts": {
-    "build": "tsc --noEmit",
     "dev": "tsx watch src/dev.ts",
     "set-webhook": "tsx scripts/set-webhook.ts",
     "typecheck": "tsc --noEmit"

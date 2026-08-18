@@ -46,9 +46,9 @@ export async function generateAIResponse(
     const recentMessages = await getRecentChatHistory(chatId, 5);
     const contextHistory = formatHistoryContext(recentMessages);
 
-    // Gunakan model Gemini 2.0 Flash / Gemini 1.5 Flash yang sangat cepat untuk Telegram Bot
+    // Gunakan model Gemini 3.6 Flash yang aktif & responsif
     const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-3.6-flash',
       systemInstruction: SYSTEM_INSTRUCTION,
       generationConfig: {
         temperature: 0.8,

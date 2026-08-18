@@ -1,0 +1,33 @@
+{
+  "name": "telegram-ai-bot",
+  "version": "1.0.0",
+  "description": "Telegram Bot AI with grammY, Supabase, Google Gemini API, and Vercel Serverless Functions",
+  "main": "api/webhook.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/dev.ts",
+    "set-webhook": "tsx scripts/set-webhook.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.0",
+    "@supabase/supabase-js": "^2.49.1",
+    "dotenv": "^16.4.7",
+    "grammy": "^1.35.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.9",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  },
+  "keywords": [
+    "telegram-bot",
+    "grammy",
+    "supabase",
+    "gemini-ai",
+    "vercel-serverless"
+  ],
+  "author": "",
+  "license": "MIT"
+}

@@ -1,15 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
-    "api/webhook.ts": {
+    "api/**/*.ts": {
       "maxDuration": 60,
       "memory": 1024
     }
-  },
-  "routes": [
-    {
-      "src": "/api/webhook",
-      "dest": "/api/webhook.ts"
-    }
-  ]
+  }
 }

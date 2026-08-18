@@ -1,6 +1,9 @@
 import { webhookCallback } from 'grammy';
 import { bot } from '../src/bot.js';
 
+// Cache untuk mencegah duplikasi pemrosesan update akibat retry dari Telegram
+const processedUpdates = new Set<number>();
+
 // Vercel Serverless Function entry point
 export default async function handler(req: any, res: any) {
   // 1. Health check jika dibuka via browser (GET)
@@ -28,9 +31,24 @@ export default async function handler(req: any, res: any) {
     }
   }
 
+  // 4. Cegah double-reply akibat retry Telegram jika pesan yang sama dikirim ulang
+  const updateId = req.body?.update_id;
+  if (updateId) {
+    if (processedUpdates.has(updateId)) {
+      return res.status(200).json({ ok: true, note: 'Duplicate update ignored' });
+    }
+    processedUpdates.add(updateId);
+    if (processedUpdates.size > 200) {
+      const first = processedUpdates.values().next().value;
+      if (first !== undefined) processedUpdates.delete(first);
+    }
+  }
+
   try {
-    // 4. Gunakan adapter webhookCallback dari grammY untuk format standar HTTP (Vercel)
-    const callback = webhookCallback(bot, 'http');
+    // 5. Gunakan adapter webhookCallback dari grammY
+    const callback = webhookCallback(bot, 'http', {
+      timeoutMilliseconds: 25000,
+    });
     return await callback(req, res);
   } catch (err: any) {
     console.error('❌ Error handling webhook callback:', err);

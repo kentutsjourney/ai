@@ -12,8 +12,10 @@ if (!token) {
 
 export const bot = new Bot(token);
 
-// Cache username bot
+// Cache username bot & owner
 let botUsername = process.env.BOT_USERNAME?.replace(/^@/, '').toLowerCase() || '';
+const ownerUsername = process.env.OWNER_USERNAME?.replace(/^@/, '').toLowerCase() || 'arikamukunaon';
+const ownerId = process.env.OWNER_ID || '';
 
 // Inisialisasi info bot saat startup jika belum ada
 bot.init().then(() => {
@@ -24,6 +26,15 @@ bot.init().then(() => {
 }).catch((err) => {
   console.warn('⚠️ Warning bot.init() startup:', err.message);
 });
+
+/**
+ * Helper untuk mengecek apakah user adalah Owner Bot
+ */
+function isUserOwner(username: string | null | undefined, userId: number): boolean {
+  if (ownerId && userId.toString() === ownerId) return true;
+  if (ownerUsername && username && username.toLowerCase() === ownerUsername) return true;
+  return false;
+}
 
 /**
  * Helper untuk mengecek apakah pengirim pesan adalah Admin / Creator di grup
@@ -43,11 +54,22 @@ async function isUserAdmin(ctx: Context, chatId: number, userId: number): Promis
 // ==========================================================
 
 bot.command('start', async (ctx) => {
+  const isPrivate = ctx.chat.type === 'private';
+  const senderId = ctx.from?.id || 0;
+  const username = ctx.from?.username;
+
+  if (isPrivate && !isUserOwner(username, senderId)) {
+    await ctx.reply(`⛔ Sori bray, bot ini bersifat privat dan cuma bisa dipake sama Owner (@${ownerUsername})!`);
+    return;
+  }
+
   await ctx.reply(
     `Yo bro! 🤙 Gue asisten AI tongkrongan lu.\n\n` +
     `Lu bisa ngobrol santai ama gue di sini, atau masukin gue ke grup tongkrongan lu.\n` +
     `Tinggal mention @${botUsername || 'nama_bot'} atau reply chat gue, nanti gue sautin pake gaya santuy!\n\n` +
-    `⚠️ *Catatan Grup*: Di dalam grup, cuma *Admin Grup* yang bisa nyuruh-nyuruh AI ini ya!`,
+    `⚠️ *Catatan Hak Akses*:\n` +
+    `- Di Chat Pribadi: Khusus Owner (@${ownerUsername})\n` +
+    `- Di Grup: Khusus Admin / Owner Grup`,
     { parse_mode: 'Markdown' }
   );
 });
@@ -55,11 +77,11 @@ bot.command('start', async (ctx) => {
 bot.command('help', async (ctx) => {
   await ctx.reply(
     `📌 *Cara Make Bot Ini:*\n\n` +
-    `1. *Ngobrol*: Mention @${botUsername || 'bot'} atau reply pesan gue (Khusus Admin di grup).\n` +
+    `1. *Ngobrol*: Mention @${botUsername || 'bot'} atau reply pesan gue.\n` +
     `2. *Tanya Langsung*: Ketik \`/ask <pertanyaan>\`\n` +
     `3. *Media Recall*: Ketik \`/getmedia\` buat narik media/foto terakhir yang pernah dikirim di grup ini.\n` +
-    `4. *Memory*: Tenang, gue otomatis inget 5 obrolan terakhir biar nyambung!\n\n` +
-    `👑 *Role*: Di grup, fitur interaksi AI hanya aktif untuk *Admin / Owner* grup.`,
+    `4. *Memory*: Gue otomatis inget obrolan sebelumnya!\n\n` +
+    `👑 *Role*: Di chat pribadi khusus Owner (@${ownerUsername}), di grup khusus Admin.`,
     { parse_mode: 'Markdown' }
   );
 });
@@ -71,6 +93,13 @@ bot.command('getmedia', async (ctx) => {
   const chatId = chat.id;
   const isPrivate = chat.type === 'private';
   const senderId = ctx.from?.id || 0;
+  const username = ctx.from?.username;
+
+  // Verifikasi owner jika di DM
+  if (isPrivate && !isUserOwner(username, senderId)) {
+    await ctx.reply(`⛔ Fitur ini cuma buat Owner (@${ownerUsername}) ya bray!`);
+    return;
+  }
 
   // Verifikasi admin jika di grup
   if (!isPrivate) {
@@ -94,7 +123,7 @@ bot.command('getmedia', async (ctx) => {
 
   try {
     const sender = lastMedia.username ? `@${lastMedia.username}` : 'Seseorang';
-    const caption = `📸 Nih media terakhir dari ${sender} yang tersimpan di memory!\n${lastMedia.message_text ? `Caption: "${lastMedia.message_text}"` : ''}`;
+    const caption = `📸 Nih media terakhir dari ${sender}!\n${lastMedia.message_text ? `Caption: "${lastMedia.message_text}"` : ''}`;
 
     if (lastMedia.media_type === 'photo') {
       await ctx.replyWithPhoto(lastMedia.media_file_id, { caption });
@@ -133,7 +162,6 @@ bot.on('message', async (ctx: Context) => {
 
   if (message.photo && message.photo.length > 0) {
     mediaType = 'photo';
-    // Ambil resolusi terbesar (elemen terakhir pada array photo)
     mediaFileId = message.photo[message.photo.length - 1].file_id;
   } else if (message.video) {
     mediaType = 'video';
@@ -149,7 +177,7 @@ bot.on('message', async (ctx: Context) => {
     mediaFileId = message.sticker.file_id;
   }
 
-  // 2. Simpan secara asinkron ke Supabase (tidak memblokir alur kerja)
+  // 2. Simpan secara asinkron ke Supabase (hanya jika ada isi teks/media)
   saveChatMessage({
     chat_id: chatId,
     user_id: senderId,
@@ -167,19 +195,26 @@ bot.on('message', async (ctx: Context) => {
     : false;
   const isAskCommand = messageText.startsWith('/ask') || messageText.startsWith('/ai');
 
-  // Trigger AI jika:
-  // - Chat pribadi (DM)
-  // - Bot di-reply
-  // - Bot di-mention
-  // - Command /ask atau /ai
   const shouldRespond = isPrivate || isReplyToBot || isMentioned || isAskCommand;
 
   if (!shouldRespond) {
-    // Jika bukan trigger, biarkan pesan tersimpan di memory saja
     return;
   }
 
-  // 4. Verifikasi Hak Akses: Di grup hanya Admin / Owner yang boleh memanggil AI
+  // 4. Verifikasi Hak Akses:
+  // - Di Chat Pribadi (DM): Hanya OWNER
+  if (isPrivate) {
+    const isOwner = isUserOwner(from?.username, senderId);
+    if (!isOwner) {
+      await ctx.reply(
+        `⛔ Sori bray, bot ini di-setting privat dan cuma bisa dipake sama Owner gue (@${ownerUsername})! 😜`,
+        { reply_to_message_id: message.message_id }
+      );
+      return;
+    }
+  }
+
+  // - Di Grup: Hanya ADMIN / OWNER grup
   if (!isPrivate) {
     const isAdmin = await isUserAdmin(ctx, chatId, senderId);
     if (!isAdmin) {
@@ -194,43 +229,42 @@ bot.on('message', async (ctx: Context) => {
     }
   }
 
-  // Bersihkan teks dari mention bot / command
+  // 5. Bersihkan teks dari mention bot / command
   let cleanedPrompt = messageText;
   if (currentBotUsername) {
     cleanedPrompt = cleanedPrompt.replace(new RegExp(`@${currentBotUsername}`, 'gi'), '').trim();
   }
   cleanedPrompt = cleanedPrompt.replace(/^\/(ask|ai)\s*/i, '').trim();
 
-  // Jika pesan kosong tapi mengirim foto/media
   if (!cleanedPrompt && mediaType) {
-    cleanedPrompt = `[User mengirimkan sebuah ${mediaType}] Coba komentarin foto/media ini dong bray!`;
+    cleanedPrompt = `[User mengirimkan sebuah ${mediaType}] Komentarin singkat bray.`;
   } else if (!cleanedPrompt) {
-    cleanedPrompt = 'Halo bot!';
+    cleanedPrompt = 'Halo!';
   }
 
-  // 4. Kirim indikator "sedang mengetik"
+  // 6. Kirim indikator "sedang mengetik"
   try {
     await ctx.replyWithChatAction('typing');
   } catch (err) {
     // Ignore chat action error
   }
 
-  // 5. Panggil Gemini AI dengan memory context dari Supabase
+  // 7. Panggil Gemini AI dengan response yang singkat & santai
   try {
     const aiAnswer = await generateAIResponse(chatId, cleanedPrompt, username);
 
-    // Balas pesan
+    // Balas pesan langsung
     await ctx.reply(aiAnswer, {
       reply_to_message_id: message.message_id,
       parse_mode: 'Markdown',
     }).catch(async () => {
-      // Fallback tanpa markdown jika ada karakter spesial markdown yang tidak valid
+      // Fallback tanpa format markdown jika ada karakter spesial
       await ctx.reply(aiAnswer, {
         reply_to_message_id: message.message_id,
       });
     });
 
-    // Simpan juga respon bot ke database Supabase agar masuk ke konteks memori percakapan
+    // Simpan respon bot ke database Supabase
     saveChatMessage({
       chat_id: chatId,
       user_id: ctx.me.id,
@@ -241,6 +275,6 @@ bot.on('message', async (ctx: Context) => {
     }).catch((err) => console.error('Save bot answer async error:', err));
   } catch (err: any) {
     console.error('❌ Gagal memproses respon AI:', err);
-    await ctx.reply('Aduh sori bray, otak gue lagi ngebul. Coba colek lagi nanti ya!');
+    await ctx.reply('Pala gue lagi ngebul bray, coba bentar lagi ya!');
   }
 });

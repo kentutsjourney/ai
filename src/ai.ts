@@ -12,8 +12,14 @@ if (!apiKey) {
 
 const genAI = new GoogleGenerativeAI(apiKey);
 
-// System prompt sesuai permintaan user
-const SYSTEM_INSTRUCTION = `Kamu adalah bot asisten grup tongkrongan yang asyik, sarkas tapi helpful. Jawab dengan bahasa Indonesia santai ala anak Jakarta (pake lu/gue, santuy, jangan kaku kayak bot CS). Kamu bisa memahami konteks obrolan dari pesan-pesan sebelumnya. Jika ada yang nanya serius tetap beri solusi yang bener tapi dengan gaya tongkrongan. Jangan terlalu panjang bertele-tele kecuali diminta menjelaskan detail.`;
+// System prompt tongkrongan yang singkat, padat, dan tidak bertele-tele
+const SYSTEM_INSTRUCTION = `Kamu adalah bot asisten tongkrongan yang asyik, sarkas, dan santai ala anak Jakarta (pake lu/gue).
+
+ATURAN WAJIB:
+1. Jawab dengan SINGKAT dan RINGKAS (Maksimal 1 sampai 3 kalimat saja).
+2. Jangan bikin paragraf panjang, jangan bertele-tele, jangan ceramah, dan jangan sok formal.
+3. Langsung to the point dengan gaya nyeleneh/sarkas santuy.
+4. Pahami konteks obrolan sebelumnya.`;
 
 /**
  * Format riwayat pesan dari database Supabase menjadi string konteks yang rapi untuk Gemini.
@@ -26,9 +32,8 @@ function formatHistoryContext(history: ChatMessageRecord[]): string {
   return history
     .map((item) => {
       const name = item.username ? `@${item.username}` : `User_${item.user_id}`;
-      const mediaInfo = item.media_type ? ` [Mengirim ${item.media_type}]` : '';
-      const text = item.message_text ? item.message_text : '(tanpa caption/teks)';
-      return `${name}${mediaInfo}: ${text}`;
+      const text = item.message_text ? item.message_text : '(media)';
+      return `${name}: ${text}`;
     })
     .join('\n');
 }
@@ -46,29 +51,28 @@ export async function generateAIResponse(
     const recentMessages = await getRecentChatHistory(chatId, 5);
     const contextHistory = formatHistoryContext(recentMessages);
 
-    // Gunakan model Gemini 3.6 Flash yang aktif & responsif
     const model = genAI.getGenerativeModel({
       model: 'gemini-3.6-flash',
       systemInstruction: SYSTEM_INSTRUCTION,
       generationConfig: {
-        temperature: 0.8,
-        maxOutputTokens: 800,
+        temperature: 0.7,
+        maxOutputTokens: 200, // Dibatasi agar respon cepat & tidak kepanjangan
       },
     });
 
-    const userMessagePayload = `[KONTEKS 5 PESAN TERAKHIR DI GRUP]:\n${contextHistory}\n\n[PESAN TERBARU DARI @${senderUsername}]:\n"${currentPrompt}"\n\nBalas pesan terbaru ini sekarang:`;
+    const userMessagePayload = `[Konteks obrolan sebelumnya]:\n${contextHistory}\n\n[Pesan masuk dari @${senderUsername}]:\n"${currentPrompt}"\n\nJawab dengan singkat (1-3 kalimat saja):`;
 
     const result = await model.generateContent(userMessagePayload);
     const response = await result.response;
     const text = response.text();
 
     if (!text || text.trim() === '') {
-      return 'Duh, pala gue lagi nge-blank nih, coba tanya lagi bentar lagi.';
+      return 'Ngeblank pala gue bray, tanya lagi ntar dah.';
     }
 
     return text.trim();
   } catch (error: any) {
     console.error('❌ Error saat memanggil Gemini API:', error);
-    return 'Waduh lagi error nih koneksi ke otak gue, coba colek lagi nanti ya bray!';
+    return 'Lagi pusing pala gue bray, colek ntar lagi ya!';
   }
 }
